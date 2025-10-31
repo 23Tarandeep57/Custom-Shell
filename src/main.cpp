@@ -15,7 +15,6 @@ set<string> builtin_set= {"exit", "echo", "type", "pwd", "shell_name", "cd"};
 
 
 
-
 void change_dir(vector<string>& words) {
     string path = words[1];
 
@@ -137,7 +136,7 @@ int main() {
 
     while (true) {
 
-        cout << "$ ";
+        cout << "$taklu> ";
       
         string input;
         getline(cin, input);
