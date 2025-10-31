@@ -136,8 +136,8 @@ int main() {
 
     while (true) {
 
-        cout << "$taklu> ";
-      
+        cout << "$taran> ";
+        cout << "taklu$ ";
         string input;
         getline(cin, input);
 
