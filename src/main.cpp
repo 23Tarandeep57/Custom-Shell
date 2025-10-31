@@ -140,6 +140,7 @@ int main() {
         cout << "taklu$ ";
         cout << "testing this git thingy";
         cout << "testing this git thingy again";
+        cout << "testing this git thingy";
         string input;
         getline(cin, input);
 
