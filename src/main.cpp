@@ -9,7 +9,7 @@ string TYPE = "type";
 string PWD = "pwd";
 string SHELL_NAME = "shell_name";
 string CD = "cd";
-string hello = "hello";
+
 
 set<string> builtin_set= {"exit", "echo", "type", "pwd", "shell_name", "cd"}; 
 
