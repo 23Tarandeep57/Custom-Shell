@@ -138,6 +138,7 @@ int main() {
 
         cout << "$taran> ";
         cout << "taklu$ ";
+        cout << "testing this git thingy";
         string input;
         getline(cin, input);
 
