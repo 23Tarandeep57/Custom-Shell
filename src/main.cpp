@@ -139,6 +139,7 @@ int main() {
 
         cout << "$taran> ";
         cout << "taklu$ ";
+	cout << "bond# ";
         cout << "testing this git thingy";
 
         string input;
