@@ -3,16 +3,16 @@
 #include <unistd.h> 
 using namespace std;
 
-string EXIT = "exit";
+string EXIT = "tata";
 string ECHO = "echo";
 string TYPE = "type";
 string PWD = "pwd";
 string SHELL_NAME = "shell_name";
 string CD = "cd";
-string hello = "nello";
 
 
-set<string> builtin_set= {"exit", "echo", "type", "pwd", "shell_name", "cd"}; 
+
+set<string> builtin_set= {"tata", "echo", "type", "pwd", "shell_name", "cd"}; 
 
 
 
@@ -133,16 +133,9 @@ int main() {
     cout << unitbuf;
     cerr << unitbuf;
 
-
-
     while (true) {
-
-        cout << "$taran> ";
-        cout << "taklu$ ";
-	cout << "bond# ";
-	cout << "chotu ";
-        cout << "testing this git thingy";
-
+        cout << "$";
+        
         string input;
         getline(cin, input);
 
@@ -154,14 +147,10 @@ int main() {
             words.push_back(segment);
         }
     
-    
-    
         if (words.size() == 0) continue;
         
         string cmd = words[0];
 
-        
-        
         if (cmd == EXIT) {
             if (words.size() == 1) return 0;
             else if (words[1] == "0") return 0;
