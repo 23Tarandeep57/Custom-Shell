@@ -18,6 +18,7 @@ set<string> builtin_set= {"tata", "echo", "type", "pwd", "shell_name", "cd"};
 struct Token {
     string text;
     bool had_single_quotes = false;
+    bool had_double_quotes = false;
 };
 
 pair<bool , vector<Token>> tokenize(const string& input) {
@@ -25,25 +26,43 @@ pair<bool , vector<Token>> tokenize(const string& input) {
     string buff;
 
     bool in_single = false;
-    bool token_had_quotes = false;
+    bool in_double = false;
+    bool token_had_single = false;
+    bool token_had_double = false;
 
 
     auto push_token = [&]() {
-        tokens.push_back(Token{buff, token_had_quotes});
+        tokens.push_back(Token{buff, token_had_single, token_had_double });
         buff.clear();
-        token_had_quotes = false;   
+        token_had_single = false;   
+        token_had_double = false;
     };
 
     for (size_t i = 0; i  < input.size(); i++) {
         char c = input[i];
 
-        if (c == '\'') {
+        if (c == '\'' && !in_double) {
             in_single = !in_single;
-            token_had_quotes = true;
+            token_had_single = true;
             continue;
         }
-        if (!in_single && isspace(static_cast<unsigned char>(c))) {
-            if (!buff.empty() || token_had_quotes) {
+        if (c == '\"' && !in_single) {
+            in_double = !in_double;
+            token_had_double = true;
+            continue;
+        }
+
+        if (in_double && c == '\\' && i + 1 < input.size()) {
+            char next = input[i + 1];
+            if (next == '\"' || next == '\\') {
+                buff.push_back(next);
+                i++;
+                continue;
+            }
+        }
+
+        if (!in_single && !in_double && isspace(static_cast<unsigned char>(c))) {
+            if (!buff.empty() || token_had_single || token_had_double) {
                 push_token();
             }
             continue;
@@ -56,7 +75,12 @@ pair<bool , vector<Token>> tokenize(const string& input) {
         return {false, {}};
     }
 
-    if (!buff.empty() || token_had_quotes) {
+    if (in_double) {
+        cerr << "unterminated double quote" << endl;
+        return {false, {}};
+    }
+
+    if (!buff.empty() || token_had_single || token_had_double) {
         push_token();
     }
 
@@ -73,7 +97,7 @@ vector<string> to_texts(const vector<Token>& toks) {
 void change_dir(vector<Token>& tokens) {
     string path = tokens[1].text;
 
-    if (path == "~" && !tokens[1].had_single_quotes) {
+    if (path == "~" && !tokens[1].had_single_quotes && !tokens[1].had_double_quotes) {
         const char* home = getenv("HOME");
         if (home != NULL) {
             path = string(home);
@@ -93,7 +117,8 @@ void echo_func(vector<string>& words){
 
 	if (words[0] == ECHO) {
 		for (int i = 1; i < words.size(); i++){
-			cout << words[i] << " ";
+			cout << words[i];
+            if (i + 1 < words.size()) cout << " ";
 		}
 		cout << endl;
 	}
