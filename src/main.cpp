@@ -15,11 +15,65 @@ string CD = "cd";
 set<string> builtin_set= {"tata", "echo", "type", "pwd", "shell_name", "cd"}; 
 
 
+struct Token {
+    string text;
+    bool had_single_quotes = false;
+};
 
-void change_dir(vector<string>& words) {
-    string path = words[1];
+pair<bool , vector<Token>> tokenize(const string& input) {
+    vector<Token> tokens;
+    string buff;
 
-    if (path == "~"){
+    bool in_single = false;
+    bool token_had_quotes = false;
+
+
+    auto push_token = [&]() {
+        tokens.push_back(Token{buff, token_had_quotes});
+        buff.clear();
+        token_had_quotes = false;   
+    };
+
+    for (size_t i = 0; i  < input.size(); i++) {
+        char c = input[i];
+
+        if (c == '\'') {
+            in_single = !in_single;
+            token_had_quotes = true;
+            continue;
+        }
+        if (!in_single && isspace(static_cast<unsigned char>(c))) {
+            if (!buff.empty() || token_had_quotes) {
+                push_token();
+            }
+            continue;
+        }
+
+        buff.push_back(c);
+    }
+    if (in_single) {
+        cerr << "unterminated single quote" << endl;
+        return {false, {}};
+    }
+
+    if (!buff.empty() || token_had_quotes) {
+        push_token();
+    }
+
+    return {true, tokens};
+}
+
+vector<string> to_texts(const vector<Token>& toks) {
+    vector<string> out;
+    for (const auto& t : toks) out.push_back(t.text);
+    return out;
+}
+
+
+void change_dir(vector<Token>& tokens) {
+    string path = tokens[1].text;
+
+    if (path == "~" && !tokens[1].had_single_quotes) {
         const char* home = getenv("HOME");
         if (home != NULL) {
             path = string(home);
@@ -139,16 +193,13 @@ int main() {
         string input;
         getline(cin, input);
 
-        stringstream ss(input);
-        string segment;
-        vector<string> words;
-    
-        while (getline(ss, segment, ' ')) {
-            words.push_back(segment);
-        }
-    
-        if (words.size() == 0) continue;
-        
+       // Use quote-aware tokenizer
+        auto [ok, tokens] = tokenize(input);
+        if (!ok) continue;
+
+        if (tokens.empty()) continue;
+
+        vector<string> words = to_texts(tokens);
         string cmd = words[0];
 
         if (cmd == EXIT) {
@@ -158,7 +209,7 @@ int main() {
         }
         
         if (cmd == ECHO) echo_func(words);
-        else if (cmd == CD && words.size() == 2) change_dir(words);
+        else if (cmd == CD && words.size() == 2) change_dir(tokens);
         else if (cmd == SHELL_NAME && words.size() == 1) cout << "Taran's Shell running" << endl;
         else if (cmd == PWD && words.size() == 1) cout << get_current_directory() << endl;
         else if (cmd == TYPE) type_func(words);        
