@@ -41,6 +41,16 @@ pair<bool , vector<Token>> tokenize(const string& input) {
     for (size_t i = 0; i  < input.size(); i++) {
         char c = input[i];
 
+        if (!in_single && !in_double && c == '\\' && i+1 < input.size()) {
+            char next = input[i + 1];
+
+            if (next == ' ' || next == '\\' || next == '\'' || next == '\"') {
+                buff.push_back(next);
+                i++;
+                continue;
+            }
+        }
+
         if (c == '\'' && !in_double) {
             in_single = !in_single;
             token_had_single = true;
@@ -54,7 +64,7 @@ pair<bool , vector<Token>> tokenize(const string& input) {
 
         if (in_double && c == '\\' && i + 1 < input.size()) {
             char next = input[i + 1];
-            if (next == '\"' || next == '\\') {
+            if (next == '\"' || next == '\\' || next == ' ') {
                 buff.push_back(next);
                 i++;
                 continue;
