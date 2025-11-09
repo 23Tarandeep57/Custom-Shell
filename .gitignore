@@ -1,0 +1,11 @@
+# Ignore everything by default
+*
+
+# Keep the .gitignore itself
+!.gitignore
+
+# Allow src directory
+!src/
+
+# Allow only main.cpp inside src
+!src/main.cpp
