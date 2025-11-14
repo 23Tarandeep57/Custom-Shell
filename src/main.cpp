@@ -1,6 +1,10 @@
 #include <bits/stdc++.h>
 #include <sys/wait.h>
 #include <unistd.h> 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <fstream>
 using namespace std;
 
 string EXIT = "tata";
@@ -97,10 +101,22 @@ pair<bool , vector<Token>> tokenize(const string& input) {
     return {true, tokens};
 }
 
-vector<string> to_texts(const vector<Token>& toks) {
+pair<vector<string>, string> to_texts(const vector<Token>& toks) {
     vector<string> out;
-    for (const auto& t : toks) out.push_back(t.text);
-    return out;
+    string redirect_loc;
+    bool redirect_output = false;
+    for (const auto& t : toks) {
+        if (t.text == "1>" || t.text == ">") {
+            redirect_output = true;
+            continue;
+        }
+        if (redirect_output) {
+            redirect_loc = t.text;
+            continue;
+        }
+        else out.push_back(t.text);
+    }
+    return {out, redirect_loc};
 }
 
 
@@ -123,15 +139,16 @@ void change_dir(vector<Token>& tokens) {
 
 }
 
-void echo_func(vector<string>& words){
-
+string echo_func(vector<string>& words){
+    string ret;
 	if (words[0] == ECHO) {
 		for (int i = 1; i < words.size(); i++){
-			cout << words[i];
-            if (i + 1 < words.size()) cout << " ";
+			ret += words[i];
+            if (i + 1 < words.size()) ret += " ";
 		}
-		cout << endl;
+		ret += "\n";
 	}
+    return ret;
 }
 
 pair<bool, string> find_executables(string cmd) {
@@ -167,6 +184,68 @@ string get_current_directory() {
     }
 }
 
+
+pair<bool, string> exec_capture_stdout(const vector<string>& words) {
+    if (words.empty()) return {false, ""};
+    auto found = find_executables(words[0]);
+    if (!found.first) return {false, ""};
+
+    int pipefd[2];
+    if (pipe(pipefd) == -1) {
+        return {false, ""};
+    }
+
+    pid_t pid = fork();
+    if (pid == -1) {
+        // fork failed
+        close(pipefd[0]);
+        close(pipefd[1]);
+        return {false, ""};
+    }
+
+    if (pid == 0) {
+  
+        close(pipefd[0]);
+        if (dup2(pipefd[1], STDOUT_FILENO) == -1) {
+            _exit(127);
+        }
+       
+        close(pipefd[1]);
+
+        
+        vector<char*> args;
+        args.reserve(words.size() + 1);
+        for (const auto& w : words) args.push_back(const_cast<char*>(w.c_str()));
+        args.push_back(nullptr);
+
+        execv(found.second.c_str(), args.data());
+      
+        _exit(127);
+    }
+
+   
+    close(pipefd[1]);
+    string out;
+    char buf[4096];
+    ssize_t n;
+    while (true) {
+        n = read(pipefd[0], buf, sizeof(buf));
+        if (n > 0) {
+            out.append(buf, buf + n);
+        } else if (n == 0) {
+            break; 
+        } else {
+            if (errno == EINTR) continue;
+            break;
+        }
+    }
+    close(pipefd[0]);
+
+    int status;
+    waitpid(pid, &status, 0);
+    return {true, out};
+}
+
 void execute_func(vector<string>& words) {
     string cmd = words[0];
     auto result = find_executables(cmd);
@@ -194,27 +273,41 @@ void execute_func(vector<string>& words) {
     
 }
 
-void type_func(vector<string>& words) {	
+string type_func(vector<string>& words) {
+    string ret;	
 	if (words.size() != 2) {
-        cout << "Usage : type <command>" << endl;
-        return;
+        cerr << "Usage : type <command>\n";
+        return "";
     }
 
     string cmd = words[1];
 
     for (auto &str: builtin_set) {
         if (cmd == str) {
-            cout << cmd << " is a shell builtin" << endl;
-            return;
+            ret = cmd + " is a shell builtin\n";
+            return ret;
         }
     }
 
     auto result = find_executables(cmd);
     if (result.first) {
-        cout << cmd << " is " << result.second << endl;
-        return;
+        ret = cmd + " is " + result.second + "\n";
+        return ret;
     }
-    cout << cmd << ": not found" << endl;
+    ret = cmd + ": not found\n";
+    return "";
+
+}
+
+
+void write_to_file(const string& filename, const string& content) {
+    ofstream outfile(filename);
+    if (outfile.is_open()) {
+        outfile << content;
+        outfile.close();
+    } else {
+        cerr << "Error opening file: " << filename << endl;
+    }
 }
 
 int main() {
@@ -234,7 +327,11 @@ int main() {
 
         if (tokens.empty()) continue;
 
-        vector<string> words = to_texts(tokens);
+        auto texts = to_texts(tokens);
+        vector<string> words = texts.first;
+        string redirect_loc = texts.second;
+        bool redir = !redirect_loc.empty();
+
         string cmd = words[0];
 
         if (cmd == EXIT) {
@@ -243,15 +340,49 @@ int main() {
             else if (words[1] == "1") return 1;
         }
         
-        if (cmd == ECHO) echo_func(words);
+        if (cmd == ECHO) {
+            if (!redir)cout << echo_func(words);
+            else {
+                string echo_out = echo_func(words);
+                write_to_file(redirect_loc, echo_out);
+            }
+        }
         else if (cmd == CD && words.size() == 2) change_dir(tokens);
-        else if (cmd == SHELL_NAME && words.size() == 1) cout << "Taran's Shell running" << endl;
-        else if (cmd == PWD && words.size() == 1) cout << get_current_directory() << endl;
-        else if (cmd == TYPE) type_func(words);        
-        else if (builtin_set.find(cmd) == builtin_set.end() && find_executables(cmd).first) execute_func(words);
-        else cout<< input << ": command not found" << endl;
+        else if (cmd == SHELL_NAME && words.size() == 1) {
+            string sh_name = "Taran's Shell running";
+            if (redir) write_to_file(redirect_loc, sh_name + "\n");
+            else cout << sh_name << endl;
+        }
+        else if (cmd == PWD && words.size() == 1) {
+            if (!redir)cout << get_current_directory() << endl;
+            else {
+                string cwd = get_current_directory() + "\n";
+                write_to_file(redirect_loc, cwd);
+            }
+        }
+        else if (cmd == TYPE) {
+            if (!redir)cout << type_func(words);
+            else {
+                string type_out = type_func(words);
+                write_to_file(redirect_loc, type_out);
+            }
+        }
+        else if (builtin_set.find(cmd) == builtin_set.end()) {
+            auto [okRun, outStr] = exec_capture_stdout(words);
+            if (okRun) {
+                if (redir) write_to_file(redirect_loc, outStr);
+                else {
+                    cout << outStr;
+                    if (!outStr.empty() && outStr.back() != '\n') {
+                        cout << '\n';
+                    }
+                }
+                
+            } else {
+                cerr << cmd << ": not found" << endl;
+            }
+        } else cout<< input << ": command not found" << endl;
     }
-
 
     return 0;
 }
