@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <fstream>
+#include <optional>
 using namespace std;
 
 string EXIT = "tata";
@@ -24,6 +25,58 @@ struct Token {
     bool had_single_quotes = false;
     bool had_double_quotes = false;
 };
+
+
+bool parse_stderr_redirection(vector<string>& argv, optional<string>& stderr_path, string& err) {
+    stderr_path.reset();
+    err.clear();
+    if (argv.empty()) return true;
+
+    vector<string> out;
+    for (size_t i = 0; i < argv.size(); ++i) {
+        const string& t = argv[i];
+        if (t == "2>") {
+            if (i + 1 >= argv.size()) {
+                err = "redirection: missing file after 2>";
+                return false;
+            }
+            stderr_path = argv[i + 1];
+            ++i; 
+            continue;
+        }
+        out.push_back(t);
+    }
+    argv.swap(out);
+    return true;
+}
+
+
+void with_stderr_redir(const optional<string>& stderr_path, const function<void()>& body) {
+    if (!stderr_path) { body(); return; }
+    int saved = dup(STDERR_FILENO);
+    if (saved == -1) { body(); return; }
+
+    int fd = open(stderr_path->c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd == -1) {
+        cerr << *stderr_path << ": cannot open for writing" << endl;
+        close(saved);
+        body();
+        return;
+    }
+    if (dup2(fd, STDERR_FILENO) == -1) {
+        close(fd);
+        close(saved);
+        body();
+        return;
+    }
+    close(fd);
+
+    body();
+
+    fflush(stderr);
+    dup2(saved, STDERR_FILENO);
+    close(saved);
+}
 
 pair<bool , vector<Token>> tokenize(const string& input) {
     vector<Token> tokens;
@@ -185,7 +238,7 @@ string get_current_directory() {
 }
 
 
-pair<bool, string> exec_capture_stdout(const vector<string>& words) {
+pair<bool, string> exec_capture_stdout(const vector<string>& words, const optional<string>& stderr_path = nullopt) {
     if (words.empty()) return {false, ""};
     auto found = find_executables(words[0]);
     if (!found.first) return {false, ""};
@@ -211,6 +264,18 @@ pair<bool, string> exec_capture_stdout(const vector<string>& words) {
         }
        
         close(pipefd[1]);
+
+        if (stderr_path) {
+            int efd = open(stderr_path->c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (efd == -1) {
+                _exit(127);
+            }
+            if (dup2(efd, STDERR_FILENO) == -1) {
+                close(efd);
+                _exit(127);
+            }
+            close(efd);
+        }
 
         
         vector<char*> args;
@@ -329,10 +394,20 @@ int main() {
 
         auto texts = to_texts(tokens);
         vector<string> words = texts.first;
-        string redirect_loc = texts.second;
+        string redirect_loc = texts.second; 
         bool redir = !redirect_loc.empty();
 
-        string cmd = words[0];
+        // Parse stderr redirection (2>) from words into stderr_path, and remove it from argv copy
+        vector<string> argv_no_stderr = words;
+        optional<string> stderr_path;
+        string parse_err;
+        if (!parse_stderr_redirection(argv_no_stderr, stderr_path, parse_err)) {
+            if (!parse_err.empty()) cerr << parse_err << endl;
+            continue;
+        }
+        if (argv_no_stderr.empty()) continue;
+
+        string cmd = argv_no_stderr[0];
 
         if (cmd == EXIT) {
             if (words.size() == 1) return 0;
@@ -341,34 +416,34 @@ int main() {
         }
         
         if (cmd == ECHO) {
-            if (!redir)cout << echo_func(words);
+            if (!redir) with_stderr_redir(stderr_path, [&]{ cout << echo_func(argv_no_stderr); });
             else {
-                string echo_out = echo_func(words);
+                string echo_out = echo_func(argv_no_stderr);
                 write_to_file(redirect_loc, echo_out);
             }
         }
-        else if (cmd == CD && words.size() == 2) change_dir(tokens);
-        else if (cmd == SHELL_NAME && words.size() == 1) {
+        else if (cmd == CD && argv_no_stderr.size() == 2) with_stderr_redir(stderr_path, [&]{ change_dir(tokens); });
+        else if (cmd == SHELL_NAME && argv_no_stderr.size() == 1) {
             string sh_name = "Taran's Shell running";
             if (redir) write_to_file(redirect_loc, sh_name + "\n");
-            else cout << sh_name << endl;
+            else with_stderr_redir(stderr_path, [&]{ cout << sh_name << endl; });
         }
-        else if (cmd == PWD && words.size() == 1) {
-            if (!redir)cout << get_current_directory() << endl;
+        else if (cmd == PWD && argv_no_stderr.size() == 1) {
+            if (!redir) with_stderr_redir(stderr_path, [&]{ cout << get_current_directory() << endl; });
             else {
                 string cwd = get_current_directory() + "\n";
                 write_to_file(redirect_loc, cwd);
             }
         }
         else if (cmd == TYPE) {
-            if (!redir)cout << type_func(words);
+            if (!redir) with_stderr_redir(stderr_path, [&]{ cout << type_func(argv_no_stderr); });
             else {
-                string type_out = type_func(words);
+                string type_out = type_func(argv_no_stderr);
                 write_to_file(redirect_loc, type_out);
             }
         }
         else if (builtin_set.find(cmd) == builtin_set.end()) {
-            auto [okRun, outStr] = exec_capture_stdout(words);
+            auto [okRun, outStr] = exec_capture_stdout(argv_no_stderr, stderr_path);
             if (okRun) {
                 if (redir) write_to_file(redirect_loc, outStr);
                 else {
