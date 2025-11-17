@@ -8,7 +8,7 @@
 #include <optional>
 using namespace std;
 
-string EXIT = "tata";
+string EXIT = "bye";
 string ECHO = "echo";
 string TYPE = "type";
 string PWD = "pwd";
@@ -17,7 +17,7 @@ string CD = "cd";
 
 
 
-set<string> builtin_set= {"tata", "echo", "type", "pwd", "shell_name", "cd"}; 
+set<string> builtin_set= {"bye", "echo", "type", "pwd", "shell_name", "cd"}; 
 
 
 struct Token {
