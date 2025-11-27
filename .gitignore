@@ -9,3 +9,5 @@
 
 # Allow only main.cpp inside src
 !src/main.cpp
+!ascii_art.txt
+!ascii_img.py
