@@ -154,13 +154,17 @@ pair<bool , vector<Token>> tokenize(const string& input) {
     return {true, tokens};
 }
 
-pair<vector<string>, string> to_texts(const vector<Token>& toks) {
+pair< pair<vector<string>, string> , bool > to_texts(const vector<Token>& toks) {
     vector<string> out;
+    bool append_mode = 0;
     string redirect_loc;
     bool redirect_output = false;
     for (const auto& t : toks) {
-        if (t.text == "1>" || t.text == ">") {
+        if (t.text == "1>" || t.text == ">" || t.text == ">>" || t.text == "1>>") {
             redirect_output = true;
+            if (t.text == ">>" || t.text == "1>>") {
+                append_mode = 1;
+            }
             continue;
         }
         if (redirect_output) {
@@ -169,7 +173,7 @@ pair<vector<string>, string> to_texts(const vector<Token>& toks) {
         }
         else out.push_back(t.text);
     }
-    return {out, redirect_loc};
+    return {{out, redirect_loc}, append_mode};
 }
 
 
@@ -365,14 +369,26 @@ string type_func(vector<string>& words) {
 }
 
 
-void write_to_file(const string& filename, const string& content) {
-    ofstream outfile(filename);
-    if (outfile.is_open()) {
+void write_to_file(const string& filename, const string& content, bool append = false) {
+    if (append) {
+        ofstream outfile(filename, std::ios::app);
+        if (outfile.is_open()) {
         outfile << content;
         outfile.close();
-    } else {
-        cerr << "Error opening file: " << filename << endl;
+        } else {
+            cerr << "Error opening file: " << filename << endl;
+        }
+
+    } else{
+        ofstream outfile(filename);
+        if (outfile.is_open()) {
+        outfile << content;
+        outfile.close();
+        } else {
+            cerr << "Error opening file: " << filename << endl;
+        }
     }
+    
 }
 
 int main() {
@@ -381,7 +397,8 @@ int main() {
     cerr << unitbuf;
 
     while (true) {
-        cout << "$";
+        cout << "Taran@Shell:" << get_current_directory();
+        cout << "$ ";
         
         string input;
         getline(cin, input);
@@ -393,8 +410,9 @@ int main() {
         if (tokens.empty()) continue;
 
         auto texts = to_texts(tokens);
-        vector<string> words = texts.first;
-        string redirect_loc = texts.second; 
+        vector<string> words = texts.first.first;
+        string redirect_loc = texts.first.second;
+        bool append_mode = texts.second; 
         bool redir = !redirect_loc.empty();
 
         // Parse stderr redirection (2>) from words into stderr_path, and remove it from argv copy
@@ -419,33 +437,33 @@ int main() {
             if (!redir) with_stderr_redir(stderr_path, [&]{ cout << echo_func(argv_no_stderr); });
             else {
                 string echo_out = echo_func(argv_no_stderr);
-                write_to_file(redirect_loc, echo_out);
+                write_to_file(redirect_loc, echo_out, append_mode);
             }
         }
         else if (cmd == CD && argv_no_stderr.size() == 2) with_stderr_redir(stderr_path, [&]{ change_dir(tokens); });
         else if (cmd == SHELL_NAME && argv_no_stderr.size() == 1) {
             string sh_name = "Taran's Shell running";
-            if (redir) write_to_file(redirect_loc, sh_name + "\n");
+            if (redir) write_to_file(redirect_loc, sh_name + "\n", append_mode);
             else with_stderr_redir(stderr_path, [&]{ cout << sh_name << endl; });
         }
         else if (cmd == PWD && argv_no_stderr.size() == 1) {
             if (!redir) with_stderr_redir(stderr_path, [&]{ cout << get_current_directory() << endl; });
             else {
                 string cwd = get_current_directory() + "\n";
-                write_to_file(redirect_loc, cwd);
+                write_to_file(redirect_loc, cwd, append_mode);
             }
         }
         else if (cmd == TYPE) {
             if (!redir) with_stderr_redir(stderr_path, [&]{ cout << type_func(argv_no_stderr); });
             else {
                 string type_out = type_func(argv_no_stderr);
-                write_to_file(redirect_loc, type_out);
+                write_to_file(redirect_loc, type_out, append_mode);
             }
         }
         else if (builtin_set.find(cmd) == builtin_set.end()) {
             auto [okRun, outStr] = exec_capture_stdout(argv_no_stderr, stderr_path);
             if (okRun) {
-                if (redir) write_to_file(redirect_loc, outStr);
+                if (redir) write_to_file(redirect_loc, outStr, append_mode);
                 else {
                     cout << outStr;
                     if (!outStr.empty() && outStr.back() != '\n') {
