@@ -9,6 +9,7 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 #include <cstdlib>
+#include <dirent.h>
 using namespace std;
 
 string EXIT = "byee";
@@ -414,9 +415,6 @@ void write_to_file(const string& filename, const string& content, bool append = 
 
 
 char* completion_generator(const char* text, int state) {
-  // This function is called with state=0 the first time; subsequent calls are
-  // with a nonzero state. state=0 can be used to perform one-time
-  // initialization for this completion session.
   static vector<string> matches;
   static size_t match_index = 0;
 
@@ -428,12 +426,55 @@ char* completion_generator(const char* text, int state) {
 
     // Collect a vector of matches: vocabulary words that begin with text.
     string textstr = string(text);
+    
+    // First, check builtin commands
     for (auto word : vocab) {
       if (word.size() >= textstr.size() &&
           word.compare(0, textstr.size(), textstr) == 0) {
         matches.push_back(word);
       }
     }
+    
+    // search for executables in PATH directories
+    char* path_env = getenv("PATH");
+    if (path_env != NULL) {
+      string path_str(path_env);
+      stringstream ss(path_str);
+      string dir;
+      set<string> seen; 
+      
+      // Add builtins to seen set
+      for (auto& m : matches) seen.insert(m);
+      
+      while (getline(ss, dir, ':')) {
+        if (dir.empty()) continue;
+        
+        DIR* dp = opendir(dir.c_str());
+        if (dp == nullptr) continue;
+        
+        struct dirent* entry;
+        while ((entry = readdir(dp)) != nullptr) {
+          string name = entry->d_name;
+          // Skip . and ..
+          if (name == "." || name == "..") continue;
+          
+          // Check if name starts with text
+          if (name.size() >= textstr.size() &&
+              name.compare(0, textstr.size(), textstr) == 0) {
+            // Check if it's executable
+            string full_path = dir + "/" + name;
+            if (access(full_path.c_str(), X_OK) == 0) {
+              if (seen.find(name) == seen.end()) {
+                matches.push_back(name);
+                seen.insert(name);
+              }
+            }
+          }
+        }
+        closedir(dp);
+      }
+    }
+    sort(matches.begin(), matches.end());
   }
 
   if (match_index >= matches.size()) {
