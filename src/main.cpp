@@ -10,6 +10,7 @@
 #include <readline/history.h>
 #include <cstdlib>
 #include <dirent.h>
+#include "pipe.h"
 using namespace std;
 
 string EXIT = "byee";
@@ -413,6 +414,35 @@ void write_to_file(const string& filename, const string& content, bool append = 
     
 }
 
+// Check if input contains a pipe character (outside quotes)
+bool has_pipe(const string& input) {
+    bool in_single = false;
+    bool in_double = false;
+    for (size_t i = 0; i < input.size(); i++) {
+        char c = input[i];
+        if (c == '\'' && !in_double) in_single = !in_single;
+        else if (c == '"' && !in_single) in_double = !in_double;
+        else if (c == '|' && !in_single && !in_double) return true;
+    }
+    return false;
+}
+
+// Execute a pipeline using the pipe module
+void execute_pipeline(const string& input) {
+    pid_t pid = fork();
+    if (pid == 0) {
+        // Child process runs the pipeline
+        execute_pipeline_cmd(input.c_str());
+        _exit(127);  // Only reached if pipeline fails
+    } else if (pid > 0) {
+        // Parent waits for pipeline to complete
+        int status;
+        waitpid(pid, &status, 0);
+    } else {
+        cerr << "fork error" << endl;
+    }
+}
+
 
 char* completion_generator(const char* text, int state) {
   static vector<string> matches;
@@ -518,6 +548,13 @@ int main() {
             add_history(inp);
         }
         string input = inp ? string(inp) : "";
+        
+        // Check if input contains a pipe - if so, use pipeline execution
+        if (has_pipe(input)) {
+            execute_pipeline(input);
+            free(inp);
+            continue;
+        }
         
        // Use quote-aware tokenizer
         auto [ok, tokens] = tokenize(input);
