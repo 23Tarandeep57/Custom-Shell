@@ -11,3 +11,7 @@
 !src/main.cpp
 !ascii_art.txt
 !ascii_img.py
+!src/hexdump.c
+!src/pipe.c
+!src/pipe.h
+!src/pipe.cpp
