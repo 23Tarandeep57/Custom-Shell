@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <fstream>
 #include <optional>
+#include <iomanip>
 #include <readline/readline.h>
 #include <readline/history.h>
 #include <cstdlib>
@@ -19,11 +20,71 @@ string TYPE = "type";
 string PWD = "pwd";
 string SHELL_NAME = "shell_name";
 string CD = "cd";
+string HISTORY = "history";
 
 
+string get_history_file_path() {
+    const char* home = getenv("HOME");
+    if (home) return string(home) + "/.tshell_history";
+    return ".tshell_history";
+}
 
-set<string> builtin_set= {"byee", "echo", "type", "pwd", "shell_name", "cd"}; 
-vector<string> vocab = {"byee", "echo", "type", "pwd", "shell_name", "cd"};
+void load_history() {
+    string history_file = get_history_file_path();
+    read_history(history_file.c_str());
+}
+
+void save_history() {
+    string history_file = get_history_file_path();
+    write_history(history_file.c_str());
+}
+
+void history_func(int limit = -1) {
+    HIST_ENTRY** hist_list = history_list();
+    if (hist_list) {
+        // Count total entries
+        int total = 0;
+        while (hist_list[total]) total++;
+        
+        // Determine start index based on limit
+        int start = 0;
+        if (limit > 0 && limit < total) {
+            start = total - limit;
+        }
+        
+        for (int i = start; hist_list[i]; i++) {
+            cout << setw(5) << (i + history_base) << "  " << hist_list[i]->line << endl;
+        }
+    }
+}
+
+bool history_write(const string& filepath) {
+    if (write_history(filepath.c_str()) == 0) {
+        return true;
+    }
+    cerr << "history: cannot write to " << filepath << endl;
+    return false;
+}
+
+bool history_read(const string& filepath) {
+    if (read_history(filepath.c_str()) == 0) {
+        return true;
+    }
+    cerr << "history: cannot read from " << filepath << endl;
+    return false;
+}
+
+bool history_append(const string& filepath) {
+    if (append_history(history_length, filepath.c_str()) == 0) {
+        return true;
+    }
+    cerr << "history: cannot append to " << filepath << endl;
+    return false;
+}
+
+
+set<string> builtin_set= {"byee", "echo", "type", "pwd", "shell_name", "cd", "history"}; 
+vector<string> vocab = {"byee", "echo", "type", "pwd", "shell_name", "cd", "history"};
 
 struct Token {
     string text;
@@ -535,8 +596,10 @@ int main() {
     rl_attempted_completion_function = completer;
 
     rl_bind_key('\t', rl_complete);
-    // Enable history
+    // Enable history with persistence
     using_history();
+    stifle_history(1000);  // Limit history to 1000 entries
+    load_history();  // Load history from file on startup
 
     while (true) {
         
@@ -546,6 +609,7 @@ int main() {
 
         if (inp && *inp) { 
             add_history(inp);
+            save_history();  // Persist history after each command
         }
         string input = inp ? string(inp) : "";
         
@@ -614,6 +678,29 @@ int main() {
             else {
                 string type_out = type_func(argv_no_stderr);
                 write_to_file(redirect_loc, type_out, append_mode);
+            }
+        }
+        else if (cmd == HISTORY) {
+            if (argv_no_stderr.size() == 3 && argv_no_stderr[1] == "-w") {
+                // history -w <filepath>
+                with_stderr_redir(stderr_path, stderr_append, [&]{ history_write(argv_no_stderr[2]); });
+            } else if (argv_no_stderr.size() == 3 && argv_no_stderr[1] == "-r") {
+                // history -r <filepath>
+                with_stderr_redir(stderr_path, stderr_append, [&]{ history_read(argv_no_stderr[2]); });
+            } else if (argv_no_stderr.size() == 3 && argv_no_stderr[1] == "-a") {
+                // history -a <filepath>
+                with_stderr_redir(stderr_path, stderr_append, [&]{ history_append(argv_no_stderr[2]); });
+            } else {
+                // history or history <n>
+                int limit = -1;
+                if (argv_no_stderr.size() == 2) {
+                    try {
+                        limit = stoi(argv_no_stderr[1]);
+                    } catch (...) {
+                        limit = -1;
+                    }
+                }
+                with_stderr_redir(stderr_path, stderr_append, [&]{ history_func(limit); });
             }
         }
         else if (builtin_set.find(cmd) == builtin_set.end()) {

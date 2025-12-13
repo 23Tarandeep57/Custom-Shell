@@ -9,7 +9,7 @@
 #include <string>
 
 
-static std::set<std::string> pipe_builtins = {"echo", "pwd", "type", "byee", "shell_name", "cd"};
+static std::set<std::string> pipe_builtins = {"echo", "pwd", "type", "byee", "shell_name", "cd", "history"};
 
 static bool is_builtin(const char* cmd) {
     return pipe_builtins.find(std::string(cmd)) != pipe_builtins.end();
