@@ -186,8 +186,4 @@ Taran@Shell:~$ echo
 
 ## Author
 
-**Taran** - Custom Shell Project
-
-## License
-
-This project is open source and available for educational purposes.
+**23Tarandeep57** - Custom Shell Project
